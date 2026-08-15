@@ -3,8 +3,8 @@
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { BaselineCalculator } from '../../packages/anomaly-engine/src/baseline.js';
-import type { BaselineData } from '../../packages/anomaly-engine/src/types.js';
+import { BaselineCalculator } from '../../../packages/anomaly-engine/src/baseline.js';
+import type { BaselineData } from '../../../packages/anomaly-engine/src/types.js';
 
 // Note: In production, this would import from the npm package.
 // For monorepo dev, we import directly.

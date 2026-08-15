@@ -18,11 +18,15 @@ export function Sites() {
     e.preventDefault();
     setCreating(true);
     try {
-      await api.createSite({ name: newSiteName, domain: newSiteDomain });
+      const res = await api.createSite({ name: newSiteName, domain: newSiteDomain });
       await refreshSites();
       setShowModal(false);
       setNewSiteName('');
       setNewSiteDomain('');
+      if (res?.site?.id) {
+        selectSite(res.site.id);
+        navigate(`/sites/${res.site.id}`);
+      }
     } catch (e) {
       console.error('Failed to create site', e);
     } finally {

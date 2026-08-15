@@ -13,12 +13,12 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
-export function generateApiKey(prefix: 'pk_live_' | 'sk_live_'): { fullKey: string; keyHash: string; keyPreview: string } {
-  const secret = nanoid();
+export function generateApiKey(prefix: 'pk_live_' | 'sk_live_' = 'sk_live_') {
+  const secret = crypto.randomBytes(32).toString('hex');
   const fullKey = `${prefix}${secret}`;
-  const keyHash = hashApiKey(fullKey);
-  const keyPreview = `${prefix}***${fullKey.slice(-4)}`;
-  
+  const keyHash = crypto.createHash('sha256').update(fullKey).digest('hex');
+  // key_preview is always a short, human-friendly truncation (max 20 chars)
+  const keyPreview = `${prefix}${secret.substring(0, 8)}...`;
   return { fullKey, keyHash, keyPreview };
 }
 

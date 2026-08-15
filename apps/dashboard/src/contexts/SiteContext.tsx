@@ -16,25 +16,38 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [sites, setSites] = useState<any[]>([]);
   const [currentSite, setCurrentSite] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const refreshSites = async () => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const data = await api.getSites();
-      setSites(data.sites || data);
+      const list = Array.isArray(data) ? data : (data?.sites || []);
+      setSites(list);
       
       const savedSiteId = localStorage.getItem('currentSiteId');
       if (savedSiteId) {
-        const found = (data.sites || data).find((s: any) => s.id === savedSiteId);
-        if (found) setCurrentSite(found);
-        else if (data.sites?.length > 0) setCurrentSite(data.sites[0]);
-      } else if (data.sites?.length > 0) {
-        setCurrentSite(data.sites[0]);
+        const found = list.find((s: any) => s.id === savedSiteId);
+        if (found) {
+          setCurrentSite(found);
+        } else if (list.length > 0) {
+          setCurrentSite(list[0]);
+          localStorage.setItem('currentSiteId', list[0].id);
+        } else {
+          setCurrentSite(null);
+        }
+      } else if (list.length > 0) {
+        setCurrentSite(list[0]);
+        localStorage.setItem('currentSiteId', list[0].id);
+      } else {
+        setCurrentSite(null);
       }
     } catch (e) {
-      console.error('Failed to fetch sites', e);
+      console.error('Failed to fetch sites:', e);
     } finally {
       setLoading(false);
     }
@@ -45,10 +58,15 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const selectSite = (id: string) => {
-    const site = sites.find(s => s.id === id);
-    if (site) {
-      setCurrentSite(site);
-      localStorage.setItem('currentSiteId', id);
+    localStorage.setItem('currentSiteId', id);
+    const found = sites.find(s => s.id === id);
+    if (found) {
+      setCurrentSite(found);
+    } else {
+      // Fetch directly if not in cache
+      api.getSite(id).then(site => {
+        if (site) setCurrentSite(site);
+      }).catch(() => {});
     }
   };
 
@@ -61,7 +79,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
 
 export function useSite() {
   const context = useContext(SiteContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useSite must be used within a SiteProvider');
   }
   return context;

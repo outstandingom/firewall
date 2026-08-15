@@ -3,10 +3,10 @@
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { AnomalyDetector } from '../../packages/anomaly-engine/src/detector.js';
-import { AnomalyScorer } from '../../packages/anomaly-engine/src/scorer.js';
-import { AnomalyExplainer } from '../../packages/anomaly-engine/src/explainer.js';
-import type { BaselineData, AnomalyResult } from '../../packages/anomaly-engine/src/types.js';
+import { AnomalyDetector } from '../../../packages/anomaly-engine/src/detector.js';
+import { AnomalyScorer } from '../../../packages/anomaly-engine/src/scorer.js';
+import { AnomalyExplainer } from '../../../packages/anomaly-engine/src/explainer.js';
+import type { BaselineData, AnomalyResult } from '../../../packages/anomaly-engine/src/types.js';
 
 export class AnomalyProcessor {
   private detector: AnomalyDetector;

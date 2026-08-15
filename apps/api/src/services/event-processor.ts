@@ -18,7 +18,7 @@ export async function processEvents(events: any[]) {
       if (!siteId) continue;
 
       const eventType = raw.event_type || raw.type || 'custom_event';
-      const meta = raw.metadata || raw.payload || {};
+      const meta = raw.data || raw.metadata || raw.payload || {};
       const timestamp = raw.timestamp || new Date().toISOString();
       const sessionId = raw.session_id || meta.session_id || null;
       const visitorId = raw.visitor_id || meta.visitor_id || null;
@@ -37,8 +37,8 @@ export async function processEvents(events: any[]) {
       if (eventType === 'page_view' || eventType === 'route_change') {
         pageViews.push({
           ...baseRecordWithRoute,
-          url: meta.url || route,
-          title: meta.title || '',
+          url: raw.url || meta.url || route,
+          title: raw.title || meta.title || '',
           referrer: meta.referrer || '',
           duration_ms: meta.duration_ms || null,
           load_time_ms: meta.load_time_ms || null,
@@ -66,7 +66,7 @@ export async function processEvents(events: any[]) {
           current.last_activity = timestamp;
           sessionMap.set(sessionId, current);
         }
-      } else if (eventType === 'javascript_error' || eventType === 'error') {
+      } else if (eventType === 'javascript_error' || eventType === 'error' || eventType === 'js_error' || eventType === 'resource_error') {
         const errorType = meta.error_type || meta.name || 'Error';
         const message = String(meta.message || '').slice(0, 2000);
         const filename = meta.filename || null;
@@ -89,10 +89,10 @@ export async function processEvents(events: any[]) {
         });
       } else if (eventType === 'network_request') {
         // network_requests table has NO route column — use plain baseRecord
-        const urlStr = meta.url || route;
+        const urlStr = meta.url || meta.request_url || route;
         const normalizedPath = meta.normalized_path || normalizePath(urlStr);
-        const statusCode = meta.status_code ?? 200;
-        const isSuccess = meta.is_success ?? (statusCode < 400);
+        const statusCode = meta.status_code ?? meta.status ?? 200;
+        const isSuccess = meta.is_success ?? meta.success ?? (statusCode < 400);
 
         networkRequests.push({
           ...baseRecord,
@@ -107,7 +107,7 @@ export async function processEvents(events: any[]) {
           error_type: meta.error_type || null,
           initiator_type: meta.initiator_type || 'fetch',
         });
-      } else if (eventType === 'performance' || eventType === 'web_vital') {
+      } else if (eventType === 'performance' || eventType === 'web_vital' || eventType === 'performance_timing') {
         performanceMetrics.push({
           ...baseRecordWithRoute,
           url: meta.url || route,
@@ -174,18 +174,36 @@ export async function processEvents(events: any[]) {
     }
 
     // Always insert to events table for master activity log
-    const masterEvents = events.map(e => ({
-      site_id: e.site_id,
-      session_id: e.session_id || null,
-      visitor_id: e.visitor_id || null,
-      event_type: e.event_type || e.type || 'custom_event',
-      timestamp: e.timestamp || new Date().toISOString(),
-      route: e.route || (e.metadata?.url ? new URL(e.metadata.url, 'http://localhost').pathname : '/'),
-      metadata: e.metadata || e.payload || {},
-    }));
+    const masterEvents = events.map(e => {
+      const eventMeta = e.data || e.metadata || e.payload || {};
+      let route = e.route || '/';
+      try {
+        if (!e.route && (eventMeta.url || e.url)) {
+          route = new URL(eventMeta.url || e.url, 'http://localhost').pathname;
+        }
+      } catch { /* ignore bad URLs */ }
+      return {
+        site_id: e.site_id,
+        session_id: e.session_id || null,
+        visitor_id: e.visitor_id || null,
+        event_type: e.event_type || e.type || 'custom_event',
+        timestamp: e.timestamp || new Date().toISOString(),
+        route,
+        metadata: eventMeta,
+      };
+    });
     promises.push(supabase.from('events').insert(masterEvents));
 
-    await Promise.allSettled(promises);
+    const results = await Promise.allSettled(promises);
+    const labels = ['page_views', 'errors', 'network_requests', 'performance_metrics', 'generic_events', 'sessions', 'master_events'];
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        console.error(`[EventProcessor] Insert failed for ${labels[i] || i}:`, r.reason);
+      } else if (r.value?.error) {
+        console.error(`[EventProcessor] Insert error for ${labels[i] || i}:`, r.value.error.message);
+      }
+    });
+    console.log(`[EventProcessor] Processed batch: ${pageViews.length} pageViews, ${jsErrors.length} errors, ${networkRequests.length} network, ${performanceMetrics.length} perf, ${genericEvents.length} generic, ${sessionMap.size} sessions`);
 
     // Update site telemetry status
     const uniqueSites = [...new Set(events.map(e => e.site_id).filter(Boolean))];

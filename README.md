@@ -1,124 +1,106 @@
-# Adaptive Web Observability (AWO)
+# GrowHaz: Adaptive Web Observability 
 
-> Production-grade, multi-tenant SaaS platform for automated website telemetry, traffic analytics, frontend error monitoring, API discovery, Core Web Vitals, and adaptive statistical anomaly detection.
+GrowHaz is a full-stack, monorepo-based observability platform designed to provide real-time telemetry, session tracking, performance monitoring, and anomaly detection for modern web applications. 
 
----
-
-## 🌟 Key Features
-
-- **Single-Script Installation**: Zero-dependency browser SDK (~8KB gzipped) auto-initializes via `data-site-key`.
-- **Zero Mock Analytics**: Every dashboard chart and metric is derived directly from telemetry processed through the ingestion pipeline.
-- **Adaptive Anomaly Detection**: Unsupervised statistical baseline engine (EWMA, Z-Score, rate-of-change, multi-signal scoring) that detects traffic surges, latency degradation, and error spikes without relying on an LLM for core math.
-- **Deterministic Anomaly Explanations**: Plain-English incident summaries derived directly from telemetry variance.
-- **Automatic API Discovery**: Discovers endpoints, normalizes dynamic routes (`/api/users/:id`), and tracks p50/p95/p99 latencies and error rates.
-- **Frontend Error Deduplication**: Real-time stack trace capture, unhandled promise rejection tracking, and FNV-1a fingerprint grouping.
-- **Core Web Vitals**: Automatic collection and rating of LCP, CLS, INP, FCP, and TTFB.
-- **Privacy by Design**: Never captures passwords, form fields, cookies, authorization tokens, or arbitrary keystrokes. Supports `data-monitor-mask` and `data-monitor-ignore`.
-- **OpenTelemetry-Compatible Node.js SDK**: Server-side tracing with W3C `traceparent` propagation and Express/Fastify middleware.
-- **Real-Time Streaming**: Server-Sent Events (SSE) stream active visitors, request rates, error rates, and live anomalies.
-
----
+This platform consists of a lightweight vanilla browser SDK, a high-throughput Fastify API with Supabase backend, and a comprehensive React/Vite dashboard for visualizing metrics.
 
 ## 🏗️ Architecture
 
+The project is structured as a Turborepo monorepo with the following packages:
+
+- **`apps/api`**: A high-performance Node.js REST API built with Fastify. It handles ingestion of telemetry events, authenticates site SDK keys, interfaces with Supabase (PostgreSQL), and streams real-time updates via Server-Sent Events (SSE).
+- **`apps/dashboard`**: A React single-page application built with Vite and Tailwind CSS. It provides visualizations for traffic, user sessions, performance metrics (Web Vitals), network request monitoring, and JavaScript errors.
+- **`packages/browser-sdk`**: A lightweight (~8KB gzipped), zero-dependency vanilla TypeScript browser SDK that automatically instruments websites to capture page views, clicks, network requests, errors, and performance data.
+- **`packages/shared`**: Shared TypeScript types, schemas (Zod), and utility constants used across the API, Dashboard, and SDK.
+
+## 🚀 Key Features
+
+1. **Real-time Telemetry Ingestion**: Track page views, SPA route changes, user sessions, and custom events.
+2. **Performance Monitoring**: Automatically captures Core Web Vitals (LCP, FCP, CLS, INP) and detailed navigation timings (DNS, TCP, TLS).
+3. **Error Tracking**: Global capture of unhandled JavaScript exceptions, promise rejections, and resource loading failures with automatic deduplication and stack trace recording.
+4. **Network Observability**: Instruments `fetch` and `XMLHttpRequest` to track API call durations, status codes, and error rates.
+5. **Secure Authentication**: Native Supabase Authentication integration and robust API Key generation (`pk_live_...` and `sk_live_...`) with rate limiting to secure data ingestion endpoints.
+6. **Live Updates**: Real-time event streaming to the dashboard via SSE for instant visibility into active site traffic.
+
+## 🛠️ Tech Stack
+
+- **Frontend Dashboard**: React 18, Vite, Tailwind CSS, Recharts, Lucide React, React Router.
+- **Backend API**: Node.js, Fastify, Zod (validation).
+- **Database**: Supabase (PostgreSQL), configured with Row Level Security (RLS) and custom functions.
+- **Browser SDK**: Vanilla TypeScript, esbuild (for IIFE & ESM bundling).
+- **Tooling**: Turborepo, npm workspaces, TypeScript.
+
+## 📦 Installation & Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/outstandingom/firewall.git
+   cd firewall
+   ```
+
+2. **Install dependencies:**
+   This project uses npm workspaces. Run from the root:
+   ```bash
+   npm install
+   ```
+
+3. **Configure Environment Variables:**
+   Create a `.env` file in the root based on `.env.example`:
+   ```env
+   VITE_SUPABASE_URL="http://localhost:54321"
+   VITE_SUPABASE_ANON_KEY="your-anon-key"
+   SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+   VITE_API_URL="http://localhost:3001"
+   PORT="3001"
+   ```
+
+4. **Database Initialization (Supabase):**
+   Ensure you have the Supabase CLI installed, or run the provided SQL migrations against your hosted Supabase instance.
+   ```bash
+   npm run db:setup
+   # or run the SQL files located in supabase/migrations/
+   ```
+
+5. **Build Shared Packages:**
+   ```bash
+   npm run build -w packages/shared
+   npm run build -w packages/browser-sdk
+   ```
+
+6. **Start the Development Servers:**
+   Run the API and Dashboard concurrently from the root:
+   ```bash
+   npm run dev
+   ```
+   - API will be available at: `http://localhost:3001`
+   - Dashboard will be available at: `http://localhost:5173`
+
+## 📊 Integrating the SDK
+
+Once a site is created in the dashboard, you will receive a Site ID and a Public API Key. Add the following snippet to the `<head>` of the website you wish to monitor:
+
+```html
+<!-- Growhaz Observability Tracking Code -->
+<script
+  src="http://localhost:3001/sdk.js"
+  data-site-key="pk_live_your_public_key_here"
+  data-endpoint="http://localhost:3001"
+  defer
+></script>
 ```
-[ Customer Website ] ──────> [ Browser SDK (~8KB) ]
-                                    │
-                             HTTPS (batch/sendBeacon)
-                                    ▼
-[ Ingestion API (Fastify) ] ───> [ Rate Limiting & Auth ] ───> [ Memory / Kafka Queue ]
-                                                                      │
-                                                                      ▼
-                                                            [ Telemetry Worker ]
-                                                                      │
-            ┌───────────────────────────┬─────────────────────────────┤
-            ▼                           ▼                             ▼
-    [ PostgreSQL / Supabase ]   [ Adaptive Baseline Engine ]    [ Real-Time SSE Stream ]
-    (Partitions + Retention)    (EWMA & Multi-Signal Scoring)        │
-            ▲                                                        ▼
-            └─────────────────────────────────────────────── [ React Dashboard ]
-```
 
----
-
-## 🚀 Quick Start (Local Development)
-
-### 1. Prerequisites
-- Node.js >= 20
-- Supabase Project URL and Service Role Key (already pre-configured in `.env`)
-
-### 2. Install Dependencies
+Alternatively, install via NPM:
 ```bash
-npm install
+npm install @awo/browser-sdk
+```
+```typescript
+import { AWO } from '@awo/browser-sdk';
+
+AWO.init({
+  siteKey: 'pk_live_your_public_key_here',
+  endpoint: 'http://localhost:3001'
+});
 ```
 
-### 3. Build Packages
-```bash
-npm run build:sdk
-```
-
-### 4. Seed Telemetry Data (Zero-Mock Setup)
-Populates realistic traffic, sessions, API calls, JS errors, and baselines into your database:
-```bash
-npx tsx scripts/seed-telemetry.ts
-```
-
-### 5. Simulate an Anomaly Incident
-Evaluates deviations against baselines and records an incident with explanation:
-```bash
-npx tsx scripts/generate-anomaly.ts
-```
-
-### 6. Run the End-to-End Integration Tests
-```bash
-npm run test:integration
-```
-
-### 7. Start the Platform
-```bash
-# Start Fastify API (port 3001) and React Dashboard (port 5173 / 3000)
-npm run dev
-```
-
-- **Dashboard UI**: `http://localhost:5173`
-- **Backend API**: `http://localhost:3001`
-- **Customer SDK script**: `http://localhost:3001/sdk.js`
-- **Interactive Test Harness**: Open `demo/index.html` in your browser!
-
----
-
-## 📦 Monorepo Structure
-
-```
-adaptive-web-observability/
-├── apps/
-│   ├── api/             # Fastify telemetry ingestion & dashboard REST API
-│   ├── dashboard/       # React 18 + TypeScript + Vite + Tailwind CSS dashboard
-│   └── worker/          # Background worker (aggregation, baselines, anomaly detection)
-├── packages/
-│   ├── browser-sdk/     # Zero-dependency vanilla JS/TS client SDK (~8KB gzipped)
-│   ├── node-sdk/        # OpenTelemetry-compatible Node.js server SDK
-│   ├── anomaly-engine/  # Statistical baseline & multi-signal anomaly engine
-│   ├── analytics-engine/# Event storage & queue abstraction (Postgres / ClickHouse)
-│   └── shared/          # Shared TypeScript models, event schemas, & constants
-├── demo/
-│   └── index.html       # Customer website telemetry test harness
-├── scripts/
-│   ├── seed-telemetry.ts   # Realistic telemetry generator
-│   └── generate-anomaly.ts # Anomaly detector incident simulation
-├── tests/
-│   └── integration/     # End-to-end test runner
-├── docker-compose.yml   # Production container orchestration
-└── docs/                # Comprehensive engineering documentation
-```
-
----
-
-## 📖 Documentation Index
-
-- [API Reference](docs/api-reference.md)
-- [Database Schema & Migrations](docs/database-schema.md)
-- [Browser & Node SDK Guide](docs/sdk-guide.md)
-- [Security & Privacy Model](docs/security-and-privacy.md)
-- [Scaling Strategy & Limitations](docs/scaling-and-limitations.md)
-- [Production Deployment](docs/production-deployment.md)
+## 📜 License
+Private & Confidential. All rights reserved by GrowHaz.

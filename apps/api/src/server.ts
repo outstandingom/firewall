@@ -15,7 +15,6 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config();
 
-import { authRoutes } from './routes/auth.js';
 import { siteRoutes } from './routes/sites.js';
 import { apiKeyRoutes } from './routes/api-keys.js';
 import { ingestionRoutes } from './routes/ingestion.js';
@@ -85,7 +84,6 @@ async function start() {
 
     // Register Routes
     await server.register(healthRoutes);
-    await server.register(authRoutes);
     await server.register(siteRoutes);
     await server.register(apiKeyRoutes);
     await server.register(ingestionRoutes);

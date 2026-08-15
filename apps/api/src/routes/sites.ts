@@ -7,7 +7,7 @@ import { generateApiKey } from '../lib/auth.js';
 const createSiteSchema = z.object({
   name: z.string().min(1),
   domain: z.string().min(1),
-  organization_id: z.string().uuid(),
+  organization_id: z.string().uuid().optional(),
   project_id: z.string().uuid().optional(),
 });
 
@@ -20,29 +20,77 @@ export const siteRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(400).send({ error: 'Bad Request', details: parseResult.error.format() });
     }
 
-    const { name, domain, organization_id, project_id } = parseResult.data;
+    const { name, domain, project_id } = parseResult.data;
+    let organization_id = parseResult.data.organization_id;
     const userId = request.user!.id;
 
-    // Verify membership
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('id')
-      .eq('organization_id', organization_id)
-      .eq('user_id', userId)
-      .single();
+    if (!organization_id) {
+      // Find user's first organization
+      const { data: members } = await supabase
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', userId)
+        .limit(1);
 
-    if (!membership) {
-      return reply.status(403).send({ error: 'Forbidden', message: 'User is not a member of this organization' });
+      if (members && members.length > 0) {
+        organization_id = members[0].organization_id;
+      } else {
+        // User has no organization — auto-create one
+        const slug = 'personal-org-' + userId.substring(0, 8) + '-' + Date.now();
+        const { data: newOrg, error: orgError } = await supabase
+          .from('organizations')
+          .insert({ name: 'Personal Organization', slug })
+          .select()
+          .single();
+
+        if (orgError || !newOrg) {
+          console.error('Failed to create organization:', orgError);
+          return reply.status(500).send({
+            error: 'Internal Server Error',
+            message: 'Failed to auto-create organization: ' + (orgError?.message || 'unknown error'),
+          });
+        }
+
+        organization_id = newOrg.id;
+
+        const { error: memberError } = await supabase
+          .from('organization_members')
+          .insert({ organization_id, user_id: userId, role: 'owner' });
+
+        if (memberError) {
+          console.error('Failed to create org membership:', memberError);
+        }
+      }
+    } else {
+      // Verify membership of provided org
+      const { data: membership } = await supabase
+        .from('organization_members')
+        .select('id')
+        .eq('organization_id', organization_id)
+        .eq('user_id', userId)
+        .single();
+
+      if (!membership) {
+        return reply.status(403).send({ error: 'Forbidden', message: 'User is not a member of this organization' });
+      }
     }
 
     let finalProjectId = project_id;
     if (!finalProjectId) {
-      const { data: project } = await supabase
+      const { data: project, error: projError } = await supabase
         .from('projects')
         .insert({ name: 'Default Project', organization_id })
         .select()
         .single();
-      finalProjectId = project!.id;
+
+      if (projError || !project) {
+        console.error('Failed to create project:', projError);
+        return reply.status(500).send({
+          error: 'Internal Server Error',
+          message: 'Failed to auto-create project: ' + (projError?.message || 'unknown error'),
+        });
+      }
+      finalProjectId = project.id;
     }
 
     const { data: site, error: siteError } = await supabase
@@ -52,20 +100,27 @@ export const siteRoutes: FastifyPluginAsync = async (fastify) => {
       .single();
 
     if (siteError || !site) {
-      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to create site' });
+      console.error('Failed to create site:', siteError);
+      return reply.status(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to create site: ' + (siteError?.message || 'unknown error'),
+      });
     }
 
     // Auto-generate public key
     const { fullKey, keyHash, keyPreview } = generateApiKey('pk_live_');
-    await supabase.from('api_keys').insert({
+    const { error: keyError } = await supabase.from('api_keys').insert({
       site_id: site.id,
       organization_id,
       key_hash: keyHash,
       key_preview: keyPreview,
       key_type: 'public',
-      key_prefix: 'pk_live_',
       label: 'Default Public Key',
     });
+
+    if (keyError) {
+      console.error('Failed to create API key:', keyError);
+    }
 
     return reply.status(201).send({
       message: 'Site created successfully',
@@ -100,24 +155,46 @@ export const siteRoutes: FastifyPluginAsync = async (fastify) => {
     const { id } = request.params as { id: string };
     const userId = request.user!.id;
 
-    const { data: site, error } = await supabase
+    // 1. Fetch site directly
+    const { data: site, error: siteError } = await supabase
       .from('sites')
-      .select('*, organizations(organization_members(user_id))')
+      .select('*')
       .eq('id', id)
       .single();
 
-    if (error || !site) return reply.status(404).send({ error: 'Not Found' });
-
-    const members = (site.organizations as any)?.organization_members || [];
-    if (!members.some((m: any) => m.user_id === userId)) {
-      return reply.status(403).send({ error: 'Forbidden' });
+    if (siteError || !site) {
+      return reply.status(404).send({ error: 'Not Found', message: 'Site not found' });
     }
 
-    // Fetch site API keys
-    const { data: keys } = await supabase
+    // 2. Fetch site API keys
+    let { data: keys } = await supabase
       .from('api_keys')
       .select('id, key_prefix, key_preview, key_type, label, created_at, last_used_at, revoked_at')
-      .eq('site_id', id);
+      .eq('site_id', id)
+      .is('revoked_at', null);
+
+    // 3. Auto-generate public key if none exists
+    const hasPublicKey = keys?.some(k => k.key_type === 'public');
+    if (!hasPublicKey) {
+      const { fullKey, keyHash, keyPreview } = generateApiKey('pk_live_');
+      const { data: newKey } = await supabase
+        .from('api_keys')
+        .insert({
+          site_id: site.id,
+          organization_id: site.organization_id,
+          key_hash: keyHash,
+          key_preview: keyPreview,
+          key_type: 'public',
+          key_prefix: 'pk_live_',
+          label: 'Default Public Key',
+        })
+        .select('id, key_prefix, key_preview, key_type, label, created_at, last_used_at, revoked_at')
+        .single();
+      
+      if (newKey) {
+        keys = [...(keys || []), newKey];
+      }
+    }
 
     return reply.send({
       ...site,

@@ -8,9 +8,13 @@ const eventSchema = z.object({
   timestamp: z.string().datetime().optional().default(() => new Date().toISOString()),
   session_id: z.string().optional(),
   visitor_id: z.string().optional(),
-  url: z.string().url().optional(),
+  url: z.string().url().optional().or(z.literal('')),
+  route: z.string().optional(),
+  title: z.string().optional(),
   payload: z.any().optional(),
-});
+  data: z.any().optional(),
+  metadata: z.any().optional(),
+}).passthrough();
 
 const batchEventSchema = z.object({
   events: z.array(eventSchema).max(100)

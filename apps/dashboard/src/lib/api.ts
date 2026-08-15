@@ -1,20 +1,20 @@
+import { supabase } from './supabase';
+
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
-function getAuthHeader() {
-  const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 async function fetchWithAuth(url: string, options: RequestInit = {}) {
-  const headers = {
-    'Content-Type': 'application/json',
-    ...getAuthHeader(),
-    ...options.headers,
-  };
+  const headers = new Headers(options.headers);
+  headers.set('Content-Type', 'application/json');
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    headers.set('Authorization', `Bearer ${session.access_token}`);
+  }
+
   const response = await fetch(`${BASE_URL}${url}`, { ...options, headers });
   
   if (response.status === 401) {
-    localStorage.removeItem('token');
+    await supabase.auth.signOut();
     window.location.href = '/login';
   }
   
@@ -23,7 +23,8 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
     throw new Error(err.message || 'API Error');
   }
   
-  return response.json();
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
 }
 
 export const api = {

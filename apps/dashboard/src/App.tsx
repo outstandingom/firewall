@@ -6,8 +6,7 @@ import { Layout } from './components/Layout';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 
 // Pages
-import { Login } from './pages/Login';
-import { Register } from './pages/Register';
+import Login from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Sites } from './pages/Sites';
 import { SiteDetail } from './pages/SiteDetail';
@@ -42,7 +41,6 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
       
       <Route path="/" element={
         <PrivateRoute>
