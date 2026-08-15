@@ -1,0 +1,30 @@
+{
+  "name": "adaptive-web-observability",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Adaptive Web Observability — SaaS platform for website monitoring, analytics, and anomaly detection",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/dashboard\"",
+    "dev:api": "npm run dev -w apps/api",
+    "dev:dashboard": "npm run dev -w apps/dashboard",
+    "dev:worker": "npm run dev -w apps/worker",
+    "build": "npm run build --workspaces --if-present",
+    "build:sdk": "npm run build -w packages/browser-sdk",
+    "build:shared": "npm run build -w packages/shared",
+    "test": "npm test --workspaces --if-present",
+    "test:integration": "npx tsx tests/integration/test-pipeline.ts",
+    "seed": "npx tsx scripts/seed-telemetry.ts",
+    "seed:anomaly": "npx tsx scripts/generate-anomaly.ts",
+    "lint": "eslint . --ext .ts,.tsx",
+    "clean": "rimraf **/dist **/node_modules/.cache"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.3"
+  }
+}

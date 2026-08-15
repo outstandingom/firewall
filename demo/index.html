@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customer Demo Website — Adaptive Web Observability</title>
+  
+  <!-- Single script installation -->
+  <script 
+    src="http://localhost:3001/sdk.js" 
+    data-site-key="pk_live_demo_key" 
+    data-endpoint="http://localhost:3001">
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #0f172a; color: #f8fafc; padding: 2rem; line-height: 1.5; }
+    .container { max-width: 900px; margin: 0 auto; background: #1e293b; padding: 2rem; border-radius: 12px; border: 1px solid #334155; }
+    h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: #6366f1; }
+    p { color: #94a3b8; margin-bottom: 1.5rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .card { background: #0f172a; padding: 1.25rem; border-radius: 8px; border: 1px solid #334155; }
+    .card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; color: #e2e8f0; }
+    .card p { font-size: 0.875rem; margin-bottom: 1rem; }
+    button { background: #6366f1; color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer; font-weight: 500; transition: background 0.2s; }
+    button:hover { background: #4f46e5; }
+    button.danger { background: #ef4444; }
+    button.danger:hover { background: #dc2626; }
+    button.warning { background: #f59e0b; }
+    button.warning:hover { background: #d97706; }
+    .log-box { background: #020617; border: 1px solid #1e293b; border-radius: 6px; padding: 1rem; font-family: monospace; font-size: 0.8rem; height: 180px; overflow-y: auto; color: #38bdf8; }
+    .badge { display: inline-block; padding: 0.2rem 0.5rem; font-size: 0.75rem; border-radius: 4px; background: #312e81; color: #a5b4fc; margin-bottom: 1rem; }
+    .mask-demo { background: #334155; padding: 0.75rem; border-radius: 6px; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="badge">Adaptive Web Observability SDK Active</div>
+    <h1>Telemetry Test Harness</h1>
+    <p>This page simulates a real production customer website with SPA route navigation, background API calls, JS runtime exceptions, Web Vitals, and privacy masking.</p>
+
+    <div class="grid">
+      <!-- Route Changes -->
+      <div class="card">
+        <h3>SPA Navigation</h3>
+        <p>Simulate single-page app route changes (pushState).</p>
+        <button onclick="navigateRoute('/pricing')">Go to /pricing</button>
+        <button onclick="navigateRoute('/checkout')" style="margin-top: 0.5rem;">Go to /checkout</button>
+      </div>
+
+      <!-- Network / API Calls -->
+      <div class="card">
+        <h3>API Calls</h3>
+        <p>Trigger monitored fetch() requests with automatic URL normalization.</p>
+        <button onclick="triggerApi('/api/users/123', 200)">GET /api/users/123</button>
+        <button onclick="triggerApi('/api/payment/checkout', 500)" class="danger" style="margin-top: 0.5rem;">POST /api/payment (500)</button>
+      </div>
+
+      <!-- Frontend Errors -->
+      <div class="card">
+        <h3>Error Monitoring</h3>
+        <p>Trigger unhandled exceptions and promise rejections with deduplication.</p>
+        <button onclick="triggerJsError()" class="danger">Uncaught TypeError</button>
+        <button onclick="triggerUnhandledPromise()" class="danger" style="margin-top: 0.5rem;">Unhandled Rejection</button>
+      </div>
+
+      <!-- Privacy Masking -->
+      <div class="card">
+        <h3>Privacy & Masking</h3>
+        <p>Elements with <code>data-monitor-mask</code> or <code>data-monitor-ignore</code>.</p>
+        <button data-monitor-mask="true" onclick="log('Clicked masked button')">Masked Button Text</button>
+        <button data-monitor-ignore="true" style="margin-top: 0.5rem;" onclick="log('Ignored button')">Ignored Click</button>
+      </div>
+    </div>
+
+    <h3 style="margin-bottom: 0.5rem; color: #e2e8f0;">Event Activity Log</h3>
+    <div class="log-box" id="logBox">
+      [System] Browser SDK initialized. Telemetry buffered and transmitted automatically.<br>
+    </div>
+  </div>
+
+  <script>
+    function log(msg) {
+      const box = document.getElementById('logBox');
+      box.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function navigateRoute(route) {
+      window.history.pushState({}, '', route);
+      log(`Navigated to ${route} (SPA pushState event emitted)`);
+    }
+
+    function triggerApi(url, status) {
+      log(`Calling API: ${url} (expected status: ${status})`);
+      fetch(`http://localhost:3001/api/health`, { method: 'GET' })
+        .then(res => log(`API Request completed with status: ${res.status}`))
+        .catch(err => log(`API Fetch completed/failed: ${err.message}`));
+    }
+
+    function triggerJsError() {
+      log(`Triggering JavaScript runtime TypeError...`);
+      setTimeout(() => {
+        const obj = null;
+        obj.nonExistentMethod();
+      }, 50);
+    }
+
+    function triggerUnhandledPromise() {
+      log(`Triggering unhandled promise rejection...`);
+      new Promise((_, reject) => {
+        reject(new Error("Simulated unhandled network connection failure"));
+      });
+    }
+  </script>
+</body>
+</html>

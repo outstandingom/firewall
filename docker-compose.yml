@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # Ingestion & Management API
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: awo-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - API_PORT=3001
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - JWT_SECRET=${JWT_SECRET:-awo-production-secret-jwt-key-minimum-32-chars}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - awo-network
+
+  # Background Telemetry Worker
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: awo-worker
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - REDIS_URL=redis://redis:6379
+      - AGGREGATION_INTERVAL_MS=60000
+      - SESSION_TIMEOUT_MS=1800000
+      - BASELINE_INTERVAL_MS=300000
+    depends_on:
+      - redis
+    networks:
+      - awo-network
+
+  # React Dashboard UI
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    container_name: awo-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks:
+      - awo-network
+
+  # Redis Cache & Rate Limiting Buffer
+  redis:
+    image: redis:7-alpine
+    container_name: awo-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - awo-network
+
+volumes:
+  redis-data:
+
+networks:
+  awo-network:
+    driver: bridge
