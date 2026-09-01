@@ -1,0 +1,49 @@
+# kubernetes_security.yaml - K8s Microsegmentation and IAM
+
+---
+# 1. Default Deny-All Network Policy
+# This ensures that if a pod is compromised, it cannot talk to any other pod by default.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: app-a-namespace
+spec:
+  podSelector: {} # Selects all pods in the namespace
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+# 2. Allow Frontend to talk to Backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-backend
+  namespace: app-a-namespace
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
+    ports:
+    - protocol: TCP
+      port: 8080
+
+---
+# 3. Workload Identity (IAM Roles for Service Accounts)
+# Instead of hardcoding AWS credentials in pods, we link a K8s ServiceAccount to an AWS IAM Role.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend-service-account
+  namespace: app-a-namespace
+  annotations:
+    # This role has strictly limited permissions (e.g., only access to a specific S3 bucket)
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/AppABackendS3AccessRole
